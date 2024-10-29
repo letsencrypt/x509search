@@ -1,6 +1,6 @@
 module github.com/letsencrypt/x509search
 
-go 1.22.5
+go 1.23
 
 require (
 	filippo.io/sunlight v0.3.1
