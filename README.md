@@ -30,15 +30,18 @@ func main() {
 
 	now := time.Now()
 	search := x509search.Search{
+		// Filter by the Organization Name of the certificate issuer
 		Filter: func(cert *x509.Certificate) bool {
 			if len(cert.Issuer.Organization) != 1 {
 				return false
 			}
 			return cert.Issuer.Organization[0] == "Let's Encrypt"
 		},
+		// Print out the issuer and subject info every time there's a match
 		MatchCallback: func(cert *x509.Certificate) {
 			fmt.Printf("Issuer: %s Subject: %s\n", cert.Issuer.String(), cert.Subject.String())
 		},
+		// Configure a single data source: the Rome2025h1 tiled log
 		DataSources: []x509search.Sourcer{
 			staticctapi.DataSource{
 				Log:                    rome2025h1,
