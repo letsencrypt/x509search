@@ -36,10 +36,22 @@ type Sourcer interface {
 // Search is an X.509 certificate search supporting multiple concurrent data
 // sources and match de-duplication.
 type Search struct {
-	// Filter should return true for any certificate that matches the desired
-	// search parameters, and false otherwise. It is called for each certificate
-	// discovered by one of the configured data sources, and may be called more
-	// than once for any given certificate.
+	// DERFilter should return true if the raw DER bytes that were passed in
+	// match the desired search parameters, and false otherwise. It is called
+	// for each certificate discovered by one of the configured data sources,
+	// and may be called more than once for any given certificate. If DERFilter
+	// returns false, the certificate in question will not be parsed or passed
+	// to Filter.
+	//
+	// A single goroutine is responsible for invoking DERFilter, so it is safe
+	// to access memory outside of the function scope if desired.
+	DERFilter func([]byte) bool
+
+	// Filter should return true if the certificate that was passed in matches
+	// the desired search parameters, and false otherwise. It is called for each
+	// certificate discovered by one of the configured data sources, and may be
+	// called more than once for any given certificate. Filter is only called
+	// if DERFilter returns true for the same certificate.
 	//
 	// A single goroutine is responsible for invoking Filter, so it is safe to
 	// access memory outside of the function scope if desired.
@@ -91,6 +103,22 @@ func (s Search) Execute(ctx context.Context) error {
 		matches = NopCacher{}
 	}
 
+	// Default to matching all DER data
+	derFilter := s.DERFilter
+	if derFilter == nil {
+		derFilter = func(_ []byte) bool {
+			return true
+		}
+	}
+
+	// Default to matching all certificates
+	filter := s.Filter
+	if filter == nil {
+		filter = func(_ *x509.Certificate) bool {
+			return true
+		}
+	}
+
 	ctx, cancel := context.WithCancelCause(ctx)
 
 	var wg sync.WaitGroup
@@ -125,6 +153,12 @@ func (s Search) Execute(ctx context.Context) error {
 				return nil
 			}
 
+			// If the certificate doesn't match the pre-parse filter function,
+			// ignore it
+			if !derFilter(certBytes) {
+				continue
+			}
+
 			// Certificates must be parseable ASN.1 DER data
 			cert, err := x509.ParseCertificate(certBytes)
 			if err != nil {
@@ -133,7 +167,7 @@ func (s Search) Execute(ctx context.Context) error {
 			}
 
 			// If the certificate doesn't match the filter function, ignore it
-			if !s.Filter(cert) {
+			if !filter(cert) {
 				continue
 			}
 
@@ -149,8 +183,9 @@ func (s Search) Execute(ctx context.Context) error {
 }
 
 func (s Search) ValidateParameters() error {
-	if s.Filter == nil {
-		return errors.New("nil filter function")
+	// You must supply either DERFilter or Filter, or both
+	if s.DERFilter == nil && s.Filter == nil {
+		return errors.New("nil filter functions")
 	}
 
 	if s.MatchCallback == nil {
