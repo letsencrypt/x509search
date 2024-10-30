@@ -103,14 +103,16 @@ func (s Search) Execute(ctx context.Context) error {
 		matches = NopCacher{}
 	}
 
-	// For both filter functions, default to matching everything
+	// Default to matching all DER data
 	derFilter := s.DERFilter
-	filter := s.Filter
 	if derFilter == nil {
 		derFilter = func(_ []byte) bool {
 			return true
 		}
 	}
+
+	// Default to matching all certificates
+	filter := s.Filter
 	if filter == nil {
 		filter = func(_ *x509.Certificate) bool {
 			return true
